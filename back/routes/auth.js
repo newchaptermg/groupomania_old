@@ -43,7 +43,7 @@ router.post('/signup', async (req, res, next) => {
 });
 
 // Login route
-router.post('/login', async (req, res, next) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
   // Basic validation for required fields

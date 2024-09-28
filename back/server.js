@@ -9,6 +9,8 @@ const errorHandler = require('./middleware/errorHandler'); // Import the error h
 const app = express();
 app.use(express.json());
 
+
+
 // Define the root route
 app.get('/', (req, res) => {
     res.send('Welcome to the Groupomania API');
