@@ -21,7 +21,8 @@ exports.createPost = async (req, res, next) => {
 };
 
 // Fetch all posts with user information
-// exports.getAllPosts = async (req, res, next) => {
+
+// v1 exports.getAllPosts = async (req, res, next) => {
 //     try {
 //         const posts = await Post.findAllWithUser();
 //         res.status(200).json(posts);
@@ -30,13 +31,31 @@ exports.createPost = async (req, res, next) => {
 //     }
 // };
 
+// v2 exports.getAllPosts = async (req, res, next) => {
+//     try {
+//         const result = await pool.query(`
+//             SELECT p.id, p.title, p.content, p.media_url, p.likes, p.dislikes, p.created_at, u.username AS createdBy
+//             FROM public.posts p
+//             JOIN public.users u ON p.created_by = u.id
+//         `);
+
+//         res.status(200).json(result.rows);
+//     } catch (err) {
+//         console.error('Error fetching posts:', err.message);
+//         res.status(500).json({ error: 'Error fetching posts' });
+//     }
+// };
+
 exports.getAllPosts = async (req, res, next) => {
+    const { userId } = req.user;
+
     try {
         const result = await pool.query(`
-            SELECT p.id, p.title, p.content, p.media_url, p.likes, p.dislikes, p.created_at, u.username AS createdBy
+            SELECT p.id, p.title, p.content, p.media_url, 
+                CASE WHEN pr.id IS NOT NULL THEN TRUE ELSE FALSE END AS isRead
             FROM public.posts p
-            JOIN public.users u ON p.created_by = u.id
-        `);
+            LEFT JOIN public.post_reads pr ON p.id = pr.post_id AND pr.user_id = $1
+        `, [userId]);
 
         res.status(200).json(result.rows);
     } catch (err) {
@@ -44,7 +63,6 @@ exports.getAllPosts = async (req, res, next) => {
         res.status(500).json({ error: 'Error fetching posts' });
     }
 };
-
 
 // Fetch posts by a specific user
 exports.getUserPosts = async (req, res, next) => {
@@ -108,6 +126,55 @@ exports.deletePost = async (req, res, next) => {
 //     }
 // };
 
+// Read a post
+
+exports.markPostAsRead = async (req, res, next) => {
+    const { postId } = req.params;
+    const { userId } = req.user; // Extracted from the token
+
+    try {
+        // Check if the record already exists
+        const result = await pool.query(
+            'SELECT * FROM public.post_reads WHERE user_id = $1 AND post_id = $2',
+            [userId, postId]
+        );
+
+        // If the record doesn't exist, create a new entry
+        if (result.rows.length === 0) {
+            await pool.query(
+                'INSERT INTO public.post_reads (user_id, post_id) VALUES ($1, $2)',
+                [userId, postId]
+            );
+            res.status(201).json({ message: 'Post marked as read' });
+        } else {
+            res.status(200).json({ message: 'Post is already marked as read' });
+        }
+    } catch (err) {
+        console.error('Error marking post as read:', err);
+        res.status(500).json({ error: 'Error marking post as read' });
+    }
+};
+
+// Unread a post
+
+exports.markPostAsUnread = async (req, res, next) => {
+    const { postId } = req.params;
+    const { userId } = req.user; // Extracted from the token
+
+    try {
+        // Delete the record indicating the post was read
+        await pool.query(
+            'DELETE FROM public.post_reads WHERE user_id = $1 AND post_id = $2',
+            [userId, postId]
+        );
+        res.status(200).json({ message: 'Post marked as unread' });
+    } catch (err) {
+        console.error('Error marking post as unread:', err);
+        res.status(500).json({ error: 'Error marking post as unread' });
+    }
+};
+
+
 // Like a post
 exports.likePost = async (req, res, next) => {
     const { id } = req.params;
@@ -133,3 +200,5 @@ exports.dislikePost = async (req, res, next) => {
         next(err);
     }
 };
+
+

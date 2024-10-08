@@ -31,6 +31,8 @@ const upload = multer({
 router.post('/create', authenticateToken, upload.single('media'), postController.createPost);
 router.get('/', authenticateToken, postController.getAllPosts);
 router.get('/user/:userId', authenticateToken, postController.getUserPosts);
+router.post('/:postId/read', authenticateToken, postController.markPostAsRead);
+router.delete('/:postId/read', authenticateToken, postController.markPostAsUnread);
 router.post('/:id/like', authenticateToken, postController.likePost);
 router.post('/:id/dislike', authenticateToken, postController.dislikePost);
 router.delete('/:id', authenticateToken, postController.deletePost);
