@@ -14,6 +14,5 @@ pool.query('SET search_path TO public', (err, res) => {
     console.log('Search path set to public');
   }
 });
-
   
 module.exports = pool;

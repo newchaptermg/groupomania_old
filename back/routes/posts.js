@@ -1,117 +1,38 @@
 const express = require('express');
-const router = express.Router();
-const pool = require('../db');
+const postController = require('../controllers/post');
+const authenticateToken = require('../middleware/auth');
 const multer = require('multer');
+const path = require('path');
+const router = express.Router();
 
-// Multer configuration for file uploads
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/'); // Specify directory to store files
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + '-' + file.originalname);
-  }
+    destination: (req, file, cb) => cb(null, 'uploads/'),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
 });
 
-const upload = multer({ storage: storage });
+const fileFilter = (req, file, cb) => {
+    const fileTypes = /jpeg|jpg|png|gif|mp4|mp3/;
+    const extname = fileTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = fileTypes.test(file.mimetype);
 
-// Create a new post with media upload
-router.post('/create', upload.single('media'), async (req, res) => {
-  const { title, content, userId } = req.body;
-  const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null;  // Check if media was uploaded
-
-  try {
-    const result = await pool.query(
-      'INSERT INTO public.posts (title, content, created_by, media_url) VALUES ($1, $2, $3, $4) RETURNING *',
-      [title, content, userId, mediaUrl]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Error creating post' });
-  }
-});
-
-// Fetch all posts
-router.get('/', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM public.posts');
-    res.status(200).json(result.rows);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Error fetching posts' });
-  }
-});
-
-// Fetch posts by user
-router.get('/user/:userId', async (req, res) => {
-  const { userId } = req.params;
-  try {
-    const result = await pool.query('SELECT * FROM public.posts WHERE created_by = $1', [userId]);
-    res.status(200).json(result.rows);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Error fetching posts' });
-  }
-});
-
-// Delete a post (only the creator can delete)
-router.delete('/:id', async (req, res) => {
-  const { id } = req.params;
-  const { userId } = req.body; // Get userId from the request body (in real app, get this from the auth token)
-
-  try {
-    // Check if the user is the creator of the post
-    const post = await pool.query('SELECT * FROM public.posts WHERE id = $1', [id]);
-
-    if (post.rows.length === 0) {
-      return res.status(404).json({ error: 'Post not found' });
+    if (mimetype && extname) {
+        return cb(null, true);
+    } else {
+        cb(new Error('File type not allowed. Only images, mp4, and mp3 files are accepted.'));
     }
+};
 
-    if (post.rows[0].created_by !== userId) {
-      return res.status(403).json({ error: 'You do not have permission to delete this post' });
-    }
-
-    // If the user is the creator, proceed to delete
-    await pool.query('DELETE FROM public.posts WHERE id = $1', [id]);
-    res.status(200).json({ message: 'Post deleted successfully' });
-
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Error deleting post' });
-  }
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: fileFilter
 });
 
-// Like a post
-router.post('/:id/like', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const result = await pool.query(
-      'UPDATE public.posts SET likes = likes + 1 WHERE id = $1 RETURNING *',
-      [id]
-    );
-    res.status(200).json(result.rows[0]);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Error liking post' });
-  }
-});
-
-// Dislike a post
-router.post('/:id/dislike', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const result = await pool.query(
-      'UPDATE public.posts SET dislikes = dislikes + 1 WHERE id = $1 RETURNING *',
-      [id]
-    );
-    res.status(200).json(result.rows[0]);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Error disliking post' });
-  }
-});
-
+router.post('/create', authenticateToken, upload.single('media'), postController.createPost);
+router.get('/', authenticateToken, postController.getAllPosts);
+router.get('/user/:userId', authenticateToken, postController.getUserPosts);
+router.post('/:id/like', authenticateToken, postController.likePost);
+router.post('/:id/dislike', authenticateToken, postController.dislikePost);
+router.delete('/:id', authenticateToken, postController.deletePost);
 
 module.exports = router;
