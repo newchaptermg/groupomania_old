@@ -26,6 +26,31 @@ exports.signup = async (req, res, next) => {
     }
 };
 
+// exports.login = async (req, res, next) => {
+//     const { email, password } = req.body;
+
+//     try {
+//         if (!email || !password) {
+//             return res.status(400).json({ error: 'Email and password are required' });
+//         }
+
+//         const user = await User.findByEmail(email);
+//         if (!user) {
+//             return res.status(404).json({ error: 'User not found' });
+//         }
+
+//         const passwordMatch = await bcrypt.compare(password, user.password);
+//         if (!passwordMatch) {
+//             return res.status(403).json({ error: 'Invalid credentials' });
+//         }
+
+//         const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+//         res.status(200).json({ token });
+//     } catch (err) {
+//         next(err);
+//     }
+// };
+
 exports.login = async (req, res, next) => {
     const { email, password } = req.body;
 
@@ -34,17 +59,20 @@ exports.login = async (req, res, next) => {
             return res.status(400).json({ error: 'Email and password are required' });
         }
 
+        // Fetch the user by email
         const user = await User.findByEmail(email);
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        // Compare the provided password with the hashed password in the database
         const passwordMatch = await bcrypt.compare(password, user.password);
         if (!passwordMatch) {
-            return res.status(403).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'Invalid credentials' }); // Use 401 for invalid credentials
         }
 
-        const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        // Generate a JWT token
+        const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '24h' }); // Adjust expiration if needed
         res.status(200).json({ token });
     } catch (err) {
         next(err);
@@ -80,6 +108,37 @@ exports.deleteUser = async (req, res, next) => {
     } catch (err) {
       console.error('Error fetching user profile:', err);
       res.status(500).json({ error: 'Error fetching user profile' });
+    }
+  };
+  
+ 
+  exports.changePassword = async (req, res) => {
+    const { userId } = req.user; // Extract the user ID from the token
+    const { currentPassword, newPassword } = req.body;
+  
+    try {
+      // Retrieve the user's current hashed password from the database
+      const result = await pool.query('SELECT password FROM public.users WHERE id = $1', [userId]);
+      const user = result.rows[0];
+  
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+  
+      // Compare the current password provided by the user with the hashed password
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Current password is incorrect' });
+      }
+  
+      // Hash the new password and update the database
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await pool.query('UPDATE public.users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+  
+      res.status(200).json({ message: 'Password updated successfully' });
+    } catch (err) {
+      console.error('Error changing password:', err);
+      res.status(500).json({ error: 'Error changing password' });
     }
   };
   
